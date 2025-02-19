@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <BaseOutputPath>E:\vlad\ONEproject\ONE\bin\Debug\net8.0-windows\Debug\net8.0-windows</BaseOutputPath>
+	<ApplicationIcon>Assets\icon3.ico</ApplicationIcon>
+
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Assets\icon2.ico" />
+    <None Remove="Assets\Logo.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\icon3.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\Logo.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Data.SQLite" Version="1.0.119" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Data\test1.db">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
