@@ -1,95 +1,117 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
-using System.Windows;
+using System.Linq;
 
 public static class CustomerRepository
 {
-    public static void DebugDatabase()
+    public static List<Customer> GetCustomersFiltered(string region, string cluster, string team, string esa, string customer)
     {
-        using (var connection = DatabaseHelper.GetConnection())
+        var customers = new List<Customer>();
+        using var connection = DatabaseHelper.GetConnection();
+
+        string query = @"SELECT Id, Customer_name, Incoterm, Bill_to, D_code, Destination, Ship_to, Freight_cost, Country, Customer_contact FROM Customer_info WHERE 1=1";
+        using var command = new SQLiteCommand(connection);
+
+        ApplyFilters(command, ref query, region, cluster, team, esa, customer);
+
+        command.CommandText = query;
+        var reader = command.ExecuteReader();
+
+        while (reader.Read())
         {
-            try
+            customers.Add(new Customer
             {
-                connection.Open();
-                MessageBox.Show("Database connection opened successfully!", "Debug", MessageBoxButton.OK, MessageBoxImage.Information);
+                Id = reader.GetInt32(0),
+                Name = reader.SafeGetString(1),
+                Incoterm = reader.SafeGetString(2),
+                BillTo = reader.SafeGetInt(3),
+                DCode = reader.SafeGetString(4),
+                Destination = reader.SafeGetString(5),
+                ShipTo = reader.SafeGetInt(6),
+                FreightCost = reader.SafeGetString(7),
+                Country = reader.SafeGetString(8),
+                Contact = reader.SafeGetString(9),
+            });
 
-                // ✅ Check if the table exists
-                string checkTableQuery = "SELECT name FROM sqlite_master WHERE type='table' AND name='Customer_info'";
-                using (var cmd = new SQLiteCommand(checkTableQuery, connection))
-                using (var reader = cmd.ExecuteReader())
-                {
-                    if (!reader.HasRows)
-                    {
-                        MessageBox.Show("Table `Customer_info` does NOT exist!", "Database Debug", MessageBoxButton.OK, MessageBoxImage.Warning);
-                        return;
-                    }
-                }
+        }
+        return customers;
+    }
 
-                // ✅ Count the rows
-                string countQuery = "SELECT COUNT(*) FROM Customer_info";
-                using (var countCmd = new SQLiteCommand(countQuery, connection))
-                {
-                    int rowCount = Convert.ToInt32(countCmd.ExecuteScalar());
-                    MessageBox.Show($"Customer_info table contains {rowCount} rows.", "Database Debug", MessageBoxButton.OK, MessageBoxImage.Information);
+    public static Dictionary<string, List<string>> GetFilteredUniqueValues(string region, string cluster, string team, string esa, string customer)
+    {
+        var filters = new Dictionary<string, List<string>>()
+        {
+            {"region", new() },
+            {"cluster", new() },
+            {"team", new() },
+            {"esa", new() },
+            {"customer", new() }
+        };
+        using var connection = DatabaseHelper.GetConnection();
 
-                    if (rowCount == 0)
-                    {
-                        MessageBox.Show("Table exists but contains 0 rows!", "Database Debug", MessageBoxButton.OK, MessageBoxImage.Warning);
-                        return;
-                    }
-                }
+        string query = "SELECT DISTINCT region, cluster, team, CAST(Esa AS TEXT), Customer_name FROM Customer_info WHERE 1=1";
+        using var command = new SQLiteCommand(connection);
 
-                // ✅ Fetch first 5 rows (column names explicitly listed)
-                string query = "SELECT Id, Customer_name, Incoterm, Bill_to, `d-code`, Destination, Ship_to, Freight_cost, Country, Customer_contact, Specific_notes FROM Customer_info LIMIT 5";
-                using (var command = new SQLiteCommand(query, connection))
-                using (var reader = command.ExecuteReader())
-                {
-                    string debugOutput = "Retrieved Rows:\n";
-                    int readCount = 0;
+        ApplyFilters(command, ref query, region, cluster, team, esa, customer);
 
-                    while (reader.Read())
-                    {
-                        try
-                        {
-                            readCount++;
+        command.CommandText = query;
+        using var reader = command.ExecuteReader();
 
-                            // ✅ Explicitly checking values for debugging
-                            int id = reader.GetInt32(0);
-                            string name = reader.IsDBNull(1) ? "NULL" : reader.GetString(1);
-                            string incoterm = reader.IsDBNull(2) ? "NULL" : reader.GetString(2);
-                            int billTo = reader.IsDBNull(3) ? 0 : reader.GetInt32(3);
-                            int dCode = reader.IsDBNull(4) ? 0 : reader.GetInt32(4);
-                            string destination = reader.IsDBNull(5) ? "NULL" : reader.GetString(5);
-                            int shipTo = reader.IsDBNull(6) ? 0 : reader.GetInt32(6);
-                            string freightCost = reader.IsDBNull(7) ? "NULL" : reader.GetString(7);
-                            string country = reader.IsDBNull(8) ? "NULL" : reader.GetString(8); // REAL -> String fix
-                            string contact = reader.IsDBNull(9) ? "NULL" : reader.GetString(9);
-                            string notes = reader.IsDBNull(10) ? "NULL" : reader.GetString(10);
+        while (reader.Read())
+        {
+            filters["region"].Add(reader.SafeGetString(0));
+            filters["cluster"].Add(reader.SafeGetString(1));
+            filters["team"].Add(reader.SafeGetString(2));
+            filters["esa"].Add(reader.SafeGetString(3));
+            filters["customer"].Add(reader.SafeGetString(4));
+        }
+        return filters.ToDictionary(k => k.Key, v => v.Value.Distinct().OrderBy(x => x).ToList());
+    }
 
-                            debugOutput += $"ID: {id}, Name: {name}, Contact: {contact}, Country: {country}\n";
-                        }
-                        catch (Exception ex)
-                        {
-                            MessageBox.Show($"Error reading row {readCount}: {ex.Message}", "Data Read Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                            return;
-                        }
-                    }
+    public static string GetCustomerNotes(string customer)
+    {
+        using var connection = DatabaseHelper.GetConnection();
+        using var command = new SQLiteCommand(@"SELECT Specific_notes FROM User_input_data WHERE Id = (SELECT Id FROM Customer_info WHERE Customer_name = @Customer_name)", connection);
+        command.Parameters.AddWithValue("@Customer_name", customer);
+        return command.ExecuteScalar()?.ToString() ?? "";
 
-                    if (readCount == 0)
-                    {
-                        MessageBox.Show("Query executed but returned 0 rows!", "Database Debug", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    }
-                    else
-                    {
-                        MessageBox.Show(debugOutput, "Database Debug", MessageBoxButton.OK, MessageBoxImage.Information);
-                    }
-                }
-            }
-            catch (Exception ex)
+    }
+
+    public static void SaveCustomerNotes(string customer, string notes)
+    {
+        using var connection = DatabaseHelper.GetConnection();
+        string sql = @"
+        INSERT INTO User_input_data (Id, specific_notes)
+        VALUES ((SELECT Id FROM Customer_info WHERE Customer_name = @Customer_name), @specific_notes)
+        ON CONFLICT(Id) DO UPDATE SET specific_notes = excluded.specific_notes;";
+
+        using var command = new SQLiteCommand(sql, connection);
+        command.Parameters.AddWithValue("@specific_notes", notes);
+        command.Parameters.AddWithValue("@Customer_name", customer);
+        command.ExecuteNonQuery();
+    }
+
+
+    private static void ApplyFilters(SQLiteCommand command, ref string query, string region, string cluster, string team, string esa, string customer)
+    {
+        var filters = new Dictionary<string, string>
+        {
+            { "region", region },
+            { "cluster", cluster },
+            { "team", team },
+            { "esa", esa },
+            { "customer_name", customer }
+        };
+
+        foreach (var filter in filters)
+        {
+            if (!string.IsNullOrEmpty(filter.Value) && filter.Value != "All")
             {
-                MessageBox.Show($"Database Debug Error: {ex.Message}\n\nStack Trace: {ex.StackTrace}", "Database Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                query += $" AND {filter.Key} = @{filter.Key}";
+                command.Parameters.AddWithValue($"@{filter.Key}", filter.Value);
             }
         }
+
     }
 }
